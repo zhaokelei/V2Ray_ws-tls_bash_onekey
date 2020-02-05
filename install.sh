@@ -1,5 +1,6 @@
 #!/bin/bash
 
+cd $(cd "$(dirname "$0")"; pwd)
 #====================================================
 #	System Request:Debian 9+/Ubuntu 18.04+/Centos 7+
 #	Author:	wulabing
@@ -23,7 +24,7 @@ OK="${Green}[OK]${Font}"
 Error="${Red}[错误]${Font}"
 
 # 版本
-shell_version="1.0"
+shell_version="1.0.6"
 shell_mode="None"
 version_cmp="/tmp/version_cmp.tmp"
 v2ray_conf_dir="/etc/v2ray"
@@ -73,6 +74,9 @@ check_system(){
     $INS install dbus
     systemctl stop firewalld && systemctl disable firewalld
     echo -e "${OK} ${GreenBG} firewalld 已关闭 ${Font}"
+
+    systemctl stop ufw && systemctl disable ufw
+    echo -e "${OK} ${GreenBG} ufw 已关闭 ${Font}"
 }
 
 is_root(){
@@ -160,6 +164,9 @@ dependency_install(){
     ${INS} -y install qrencode
     judge "安装 qrencode"
 
+    ${INS} -y install curl
+    judge "安装 crul"
+
     if [[ "${ID}" == "centos" ]];then
        ${INS} -y groupinstall "Development tools"
     else
@@ -173,7 +180,7 @@ dependency_install(){
        ${INS} -y install libpcre3 libpcre3-dev zlib1g-dev dbus
     fi
 
-    ${INS} -y install rng-tools
+#    ${INS} -y install rng-tools
 #    judge "rng-tools 安装"
 
     ${INS} -y install haveged
@@ -182,12 +189,12 @@ dependency_install(){
     sed -i -r '/^HRNGDEVICE/d;/#HRNGDEVICE=\/dev\/null/a HRNGDEVICE=/dev/urandom' /etc/default/rng-tools
 
     if [[ "${ID}" == "centos" ]];then
-       systemctl start rngd && systemctl enable rngd
+#       systemctl start rngd && systemctl enable rngd
 #       judge "rng-tools 启动"
        systemctl start haveged && systemctl enable haveged
 #       judge "haveged 启动"
     else
-       systemctl start rng-tools && systemctl enable rng-tools
+#       systemctl start rng-tools && systemctl enable rng-tools
 #       judge "rng-tools 启动"
        systemctl start haveged && systemctl enable haveged
 #       judge "haveged 启动"
@@ -404,6 +411,7 @@ acme(){
         sleep 2
     else
         echo -e "${Error} ${RedBG} SSL 证书测试签发失败 ${Font}"
+        rm -rf "~/.acme.sh/${domain}_ecc/${domain}.key" && rm -rf "~/.acme.sh/${domain}_ecc/${domain}.cer"
         exit 1
     fi
 
@@ -419,6 +427,7 @@ acme(){
         fi
     else
         echo -e "${Error} ${RedBG} SSL 证书生成失败 ${Font}"
+        rm -rf "~/.acme.sh/${domain}_ecc/${domain}.key" && rm -rf "~/.acme.sh/${domain}_ecc/${domain}.cer"
         exit 1
     fi
 }
@@ -521,11 +530,11 @@ nginx_process_disabled(){
 #}
 acme_cron_update(){
     if [[ "${ID}" == "centos" ]];then
-        sed -i "/acme.sh/c 0 3 * * 0 systemctl stop nginx && \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
-        > /dev/null && systemctl start nginx" /var/spool/cron/root
+        sed -i "/acme.sh/c 0 3 * * 0 \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
+        &> /dev/null" /var/spool/cron/root
     else
-        sed -i "/acme.sh/c 0 3 * * 0 systemctl stop nginx && \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
-        > /dev/null && systemctl start nginx" /var/spool/cron/crontabs/root
+        sed -i "/acme.sh/c 0 3 * * 0 \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" \
+        &> /dev/null" /var/spool/cron/crontabs/root
     fi
     judge "cron 计划任务更新"
 }
@@ -592,9 +601,9 @@ show_information(){
     cat ${v2ray_info_file}
 }
 ssl_judge_and_install(){
-    if [[ -f "/data/v2ray.key" && -f "/data/v2ray.crt" ]];then
-        echo "证书文件已存在"
-    elif [[ -f "~/.acme.sh/${domain}_ecc/${domain}.key" && -f "~/.acme.sh/${domain}_ecc/${domain}.cer" ]];then
+#    if [[ -f "/data/v2ray.key" && -f "/data/v2ray.crt" ]];then
+#        echo "证书文件已存在"
+    if [[ -f "~/.acme.sh/${domain}_ecc/${domain}.key" && -f "~/.acme.sh/${domain}_ecc/${domain}.cer" ]];then
         echo "证书文件已存在"
         ~/.acme.sh/acme.sh --installcert -d ${domain} --fullchainpath /data/v2ray.crt --keypath /data/v2ray.key --ecc
         judge "证书应用"
@@ -660,8 +669,12 @@ ssl_update_manuel(){
     [ -f ${amce_sh_file} ] && "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" || echo -e  "${RedBG}证书签发工具不存在，请确认你是否使用了自己的证书${Font}"
 }
 bbr_boost_sh(){
-    bash <(curl -L -s -k "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh")
+    wget -N --no-check-certificate "https://github.com/ylx2016/Linux-NetSpeed/releases/download/sh/tcp.sh" && chmod +x tcp.sh && ./tcp.sh
 }
+mtproxy_sh(){
+    wget -N --no-check-certificate https://github.com/whunt1/onekeymakemtg/raw/master/mtproxy_go.sh && chmod +x mtproxy_go.sh && bash mtproxy_go.sh
+}
+
 uninstall_all(){
     stop_process_systemd
     [[ -f $nginx_systemd_file ]] && rm -f $nginx_systemd_file
@@ -800,10 +813,13 @@ menu(){
     echo -e "${Green}10.${Font} 查看 V2Ray 配置信息"
     echo -e "—————————————— 其他选项 ——————————————"
     echo -e "${Green}11.${Font} 安装 4合1 bbr 锐速安装脚本"
-    echo -e "${Green}12.${Font} 证书 有效期更新"
-    echo -e "${Green}13.${Font} 卸载 V2Ray"
-    echo -e "${Green}14.${Font} 退出 \n"
+    echo -e "${Green}12.${Font} 安装 MTproxy(支持TLS混淆)"
+    echo -e "${Green}13.${Font} 证书 有效期更新"
+    echo -e "${Green}14.${Font} 卸载 V2Ray"
+    echo -e "${Green}15.${Font} 更新 证书crontab计划任务"
+    echo -e "${Green}16.${Font} 退出 \n"
 
+    update_sh
     read -p "请输入数字：" menu_num
     case $menu_num in
         0)
@@ -859,14 +875,20 @@ menu(){
           bbr_boost_sh
           ;;
         12)
+          mtproxy_sh
+          ;;
+        13)
           stop_process_systemd
           ssl_update_manuel
           start_process_systemd
           ;;
-        13)
+        14)
           uninstall_all
           ;;
-        14)
+        15)
+          acme_cron_update
+          ;;
+        16)
           exit 0
           ;;
         *)
@@ -877,3 +899,4 @@ menu(){
 
 judge_mode
 list $1
+
